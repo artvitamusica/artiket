@@ -7,24 +7,31 @@
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
         body { font-family: -apple-system, system-ui, sans-serif; background: #26183C; color: white; text-align: center; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .card { width: 90%; max-width: 400px; padding: 20px; }
+        .card { width: 95%; max-width: 400px; padding: 20px; }
+        
         #video { width: 100%; border-radius: 20px; border: 3px solid white; display: none; background: black; margin-top: 15px; }
+        
         input { padding: 15px; font-size: 1.5rem; width: 100%; max-width: 200px; border-radius: 10px; border: none; text-align: center; margin: 20px 0; background: #fff; color: #26183C; }
-        .btn { background: #fff; color: #26183C; border: none; padding: 15px 40px; border-radius: 10px; font-weight: bold; font-size: 1.1rem; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .btn:active { transform: scale(0.98); }
+        
+        .btn { background: #fff; color: #26183C; border: none; padding: 15px 40px; border-radius: 10px; font-weight: bold; font-size: 1.1rem; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); width: 100%; }
+        .btn-next { background: #27ae60; color: white; margin-top: 20px; display: none; }
+        .btn-secondary { background: none; color: white; border: 1px solid white; padding: 10px; margin-top: 30px; font-size: 0.9rem; width: auto; }
+        
         #info { margin-top: 20px; padding: 20px; border-radius: 15px; font-weight: bold; display: none; font-size: 1.2rem; }
+        
         .success { background: #27ae60; border: 2px solid white; }
         .error { background: #c0392b; border: 2px solid white; }
         .used { background: #f39c12; border: 2px solid white; }
+        
         h2 { letter-spacing: 2px; margin-bottom: 5px; }
-        p { opacity: 0.8; }
+        .status-text { margin-top: 10px; font-style: italic; opacity: 0.7; }
     </style>
 </head>
 <body>
 
     <div class="card">
         <h2>ART VITA</h2>
-        <p>CONTROL DE ACCESO</p>
+        <p>VALIDADOR OFICIAL</p>
 
         <div id="login-area">
             <p style="margin-top:30px;">PIN de validador</p>
@@ -36,24 +43,26 @@
         <div id="scanner-area" style="display:none;">
             <video id="video"></video>
             <div id="info">ESPERANDO QR...</div>
-            <br><br>
-            <button class="btn" onclick="location.reload()" style="background:none; color:white; border:1px solid white; padding: 10px 20px;">Cerrar Sesión</button>
+            
+            <button id="btnNext" class="btn btn-next" onclick="resetScanner()">ESCANEAR SIGUIENTE</button>
+            
+            <p id="status" class="status-text">Cámara activa</p>
+            
+            <button class="btn btn-secondary" onclick="location.reload()">Cerrar Sesión</button>
         </div>
     </div>
 
     <script>
-        // --- COLOCA AQUÍ TU URL DE GOOGLE APPS SCRIPT ---
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyWhn311aQvHXowkYQkIVVwqhPWod7B-YWbc1N_Vuum2l_LEcNQHpn2lQEQhEeWe4pbXw/exec";
+        // --- PEGA AQUÍ TU URL DE GOOGLE APPS SCRIPT ---
+        const WEB_APP_URL = "TU_URL_AQUÍ_QUE_TERMINA_EN_EXEC";
         
         let currentPin = "";
-        let isScanning = false;
+        let isProcessing = false;
+        let controls;
         const codeReader = new ZXing.BrowserQRCodeReader();
 
         function login() {
             const pin = document.getElementById("pinInput").value;
-            if(!pin) return alert("Ingresa el PIN");
-
-            // Verificamos el PIN con el servidor
             fetch(`${WEB_APP_URL}?pin=${pin}`)
                 .then(r => r.json())
                 .then(data => {
@@ -66,48 +75,68 @@
                         alert("PIN Incorrecto");
                         document.getElementById("pinInput").value = "";
                     }
-                }).catch(e => alert("Error de conexión. Revisa internet o la URL del script."));
+                }).catch(e => alert("Error de conexión. Revisa internet."));
         }
 
-        function startCamera() {
+        async function startCamera() {
             const videoElem = document.getElementById("video");
             videoElem.style.display = "block";
 
-            codeReader.decodeFromVideoDevice(null, 'video', (result, err) => {
-                if (result && !isScanning) {
-                    isScanning = true;
-                    validarCodigo(result.text);
-                }
-            });
+            try {
+                // Iniciamos el lector de QR
+                controls = await codeReader.decodeFromVideoDevice(null, 'video', (result, err) => {
+                    if (result && !isProcessing) {
+                        isProcessing = true;
+                        validarCodigo(result.text);
+                    }
+                });
+            } catch (err) {
+                alert("Error al acceder a la cámara: " + err);
+            }
         }
 
         function validarCodigo(codigo) {
             const info = document.getElementById("info");
+            const btnNext = document.getElementById("btnNext");
+            const status = document.getElementById("status");
+
             info.style.display = "block";
             info.innerText = "VERIFICANDO...";
             info.className = "";
+            status.innerText = "Procesando código...";
 
             fetch(`${WEB_APP_URL}?pin=${currentPin}&code=${codigo}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.status === "success") {
-                        info.innerText = "✅ ACCESO: " + data.nombre;
+                        info.innerText = "✅ ACCESO PERMITIDO\n" + data.nombre;
                         info.className = "success";
                     } else if (data.status === "used") {
-                        info.innerText = "❌ YA USADA: " + data.nombre;
+                        info.innerText = "❌ YA UTILIZADA\n" + data.nombre;
                         info.className = "used";
                     } else {
                         info.innerText = "❌ CÓDIGO INVÁLIDO";
                         info.className = "error";
                     }
                     
-                    // Esperar 3.5 segundos antes de permitir el siguiente escaneo
+                    // Mostramos el botón para continuar inmediatamente
+                    btnNext.style.display = "block";
+                    status.innerText = "Escaneo pausado.";
+                    
+                    // También se resetea solo después de 6 segundos por si olvidan tocar el botón
                     setTimeout(() => {
-                        isScanning = false;
-                        info.innerText = "ESPERANDO QR...";
-                        info.className = "";
-                    }, 3500);
+                        if(isProcessing) resetScanner();
+                    }, 6000);
                 });
+        }
+
+        function resetScanner() {
+            isProcessing = false;
+            document.getElementById("btnNext").style.display = "none";
+            const info = document.getElementById("info");
+            info.innerText = "ESPERANDO QR...";
+            info.className = "esperando";
+            document.getElementById("status").innerText = "Cámara lista.";
         }
     </script>
 </body>
