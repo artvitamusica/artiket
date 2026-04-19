@@ -3,95 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Validador Universal</title>
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <title>Validador Pro - Art Vita</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #26183C; color: white; text-align: center; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .card { width: 90%; max-width: 400px; padding: 20px; }
-        #video { width: 100%; border-radius: 20px; border: 3px solid white; display: none; background: black; margin-top: 15px; }
-        input { padding: 15px; font-size: 1.5rem; width: 100%; max-width: 200px; border-radius: 10px; border: none; text-align: center; margin: 20px 0; background: #fff; color: #26183C; }
-        .btn { background: #fff; color: #26183C; border: none; padding: 15px 40px; border-radius: 10px; font-weight: bold; font-size: 1.1rem; cursor: pointer; width: 100%; margin-top: 10px; }
-        #info { margin-top: 20px; padding: 20px; border-radius: 15px; font-weight: bold; display: none; font-size: 1.2rem; }
-        .success { background: #27ae60; }
-        .error { background: #c0392b; }
-        .used { background: #f39c12; }
-        #btnNext { display: none; background: #27ae60; color: white; margin-top: 15px; }
-        #eventNameDisplay { font-size: 1.2rem; margin-bottom: 10px; color: #f39c12; font-weight: bold; }
+        body { font-family: -apple-system, sans-serif; background: #26183C; color: white; text-align: center; margin: 0; overflow: hidden; }
+        .container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; width: 100%; }
+        
+        /* Contenedor del escáner */
+        #reader { width: 100% !important; max-width: 400px; border: none !important; }
+        #reader video { border-radius: 20px; object-fit: cover; }
+        
+        /* Estilos de la tarjeta de login */
+        .login-card { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 20px; backdrop-filter: blur(10px); width: 80%; max-width: 300px; }
+        input { padding: 15px; font-size: 1.5rem; width: 80%; border-radius: 10px; border: none; text-align: center; margin: 20px 0; }
+        
+        .btn { background: #fff; color: #26183C; border: none; padding: 15px 30px; border-radius: 10px; font-weight: bold; cursor: pointer; width: 100%; }
+        
+        /* Overlay y mensajes */
+        #info { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 350px; padding: 20px; border-radius: 15px; font-weight: bold; display: none; z-index: 100; }
+        .success { background: #27ae60; border: 2px solid white; }
+        .error { background: #c0392b; border: 2px solid white; }
+        .used { background: #f39c12; border: 2px solid white; }
+        
+        #btnNext { display: none; position: fixed; top: 20px; right: 20px; background: #27ae60; color: white; padding: 10px 20px; border-radius: 8px; z-index: 101; font-weight: bold; border: none; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>SISTEMA DE ACCESO</h2>
-        
-        <div id="login-area">
-            <p>PIN del Evento</p>
+
+    <div class="container">
+        <div id="login-area" class="login-card">
+            <h2>ART VITA</h2>
+            <p>PIN DEL EVENTO</p>
             <input type="password" id="pinInput" inputmode="numeric" maxlength="4">
-            <br>
-            <button class="btn" onclick="conectarEvento()">CONECTAR EVENTO</button>
+            <button class="btn" onclick="conectarEvento()">INGRESAR</button>
         </div>
 
-        <div id="scanner-area" style="display:none;">
-            <div id="eventNameDisplay"></div>
-            <video id="video"></video>
-            <div id="info">ESPERANDO QR...</div>
-            <button id="btnNext" class="btn" onclick="resetScanner()">ESCANEAR SIGUIENTE</button>
-            <br><br>
-            <button class="btn" onclick="location.reload()" style="background:none; color:white; border:1px solid white;">Cambiar Evento</button>
+        <div id="scanner-area" style="display:none; width: 100%;">
+            <div id="reader"></div>
+            <button id="btnNext" onclick="resetScanner()">SIGUIENTE</button>
+            <p id="event-name" style="margin-top: 10px; opacity: 0.7;"></p>
         </div>
     </div>
 
+    <div id="info"></div>
+
     <script>
-        // --- PEGA AQUÍ LA URL DE TU PLANILLA MAESTRA ---
-        const MASTER_URL = "https://script.google.com/macros/s/AKfycbyswVc2KwgekG7-vRzOw18fHJDoaeA8IHq86diH2vHfzZ7vvN7xS_5yzmZ7eI4_LiweGg/exec";
-        
+        const MASTER_URL = "https://script.google.com/macros/s/AKfycbyswVc2KwgekG7-vRzOw18fHJDoaeA8IHq86diH2vHfzZ7vvN7xS_5yzmZ7eI4_LiweGg/exec"; // La de la planilla con los PINs
         let EVENT_URL = "";
+        let html5QrCode;
         let isProcessing = false;
-        const codeReader = new ZXing.BrowserQRCodeReader();
 
         function conectarEvento() {
             const pin = document.getElementById("pinInput").value;
-            const btn = document.querySelector(".btn");
-            btn.innerText = "BUSCANDO...";
-
             fetch(`${MASTER_URL}?pin=${pin}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.status === "success") {
                         EVENT_URL = data.scriptUrl;
-                        document.getElementById("eventNameDisplay").innerText = "EVENTO: " + data.eventName.toUpperCase();
+                        document.getElementById("event-name").innerText = data.eventName;
                         document.getElementById("login-area").style.display = "none";
                         document.getElementById("scanner-area").style.display = "block";
-                        startCamera();
-                    } else { 
-                        alert("PIN de evento no encontrado"); 
-                        btn.innerText = "CONECTAR EVENTO";
-                        document.getElementById("pinInput").value = "";
-                    }
-                }).catch(e => {
-                    alert("Error de red");
-                    btn.innerText = "CONECTAR EVENTO";
+                        startScanner();
+                    } else { alert("PIN Inválido"); }
                 });
         }
 
-        async function startCamera() {
-            document.getElementById("video").style.display = "block";
-            await codeReader.decodeFromVideoDevice(null, 'video', (result) => {
-                if (result && !isProcessing) {
-                    isProcessing = true;
-                    validarCodigo(result.text);
+        function startScanner() {
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { 
+                fps: 15, // Optimización de FPS
+                qrbox: { width: 250, height: 250 }, // Overlay guía
+                aspectRatio: 1.0 // Cuadrado para mejor enfoque
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText) => {
+                    if (!isProcessing) {
+                        isProcessing = true;
+                        validarTicket(decodedText);
+                    }
                 }
-            });
+            );
         }
 
-        function validarCodigo(codigo) {
+        function validarTicket(codigo) {
             const info = document.getElementById("info");
             info.style.display = "block";
             info.innerText = "VERIFICANDO...";
             info.className = "";
-            
+
             fetch(`${EVENT_URL}?code=${codigo}`)
                 .then(r => r.json())
                 .then(data => {
+                    document.getElementById("btnNext").style.display = "block";
                     if (data.status === "success") {
                         info.innerText = "✅ ACCESO: " + data.nombre;
                         info.className = "success";
@@ -102,16 +108,13 @@
                         info.innerText = "❌ INVÁLIDO";
                         info.className = "error";
                     }
-                    document.getElementById("btnNext").style.display = "block";
                 });
         }
 
         function resetScanner() {
             isProcessing = false;
             document.getElementById("btnNext").style.display = "none";
-            const info = document.getElementById("info");
-            info.innerText = "ESPERANDO QR...";
-            info.className = "";
+            document.getElementById("info").style.display = "none";
         }
     </script>
 </body>
